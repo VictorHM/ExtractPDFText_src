@@ -11,3 +11,4 @@ to information theory applications. The goal is, in all cases, learning.
    1. Use iterators for going trhough output string
    2. Change the way text is saved in file using streams instead of putc()
 - Clean unused methods and implement the rest
+- Include unit testing (include framework and tests)

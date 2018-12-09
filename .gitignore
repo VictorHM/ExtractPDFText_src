@@ -1,0 +1,10 @@
+# Ignore basic definitions
+# VS project files will be included for now
+.vs/**
+Debug/**
+zlib_vc14/**
+
+#Temporary exclusions until those files are deleted (still needed)
+pdf.cpp
+RCa04556
+Test/**

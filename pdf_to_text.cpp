@@ -1,3 +1,11 @@
+#include <stdio.h>
+#include <windows.h>
+
+//YOur project must also include zdll.lib (ZLIB) as a dependency.
+//ZLIB can be freely downloaded from the internet, www.zlib.org
+//Use 4 byte struct alignment in your project!
+
+#include "headers\zlib.h"
 #include "pdf_to_text.h"
 
 
@@ -61,6 +69,47 @@ std::string Cpdf_to_text::ProcessLine(const std::string & line_in)
 {
     size_t streamstart = line_in.find("stream");
     size_t streamend = line_in.find("endstream");
+    if (streamstart != std::string::npos && streamend > streamstart)
+    {
+        //std::string::iterator it = line_in.at[streamstart + 6];
+        streamstart += 6;
+
+        if (line_in.at[streamstart] == 0x0d && line_in.at[streamstart] == 0x0a)
+        {
+            streamstart += 2;
+        }
+        else if (line_in.at[streamstart] == 0x0a) streamstart++;
+
+        if (line_in.at[streamend - 2] == 0x0d && line_in.at[streamend - 1] == 0x0a) streamend -= 2;
+        else if (line_in.at[streamend - 1] == 0x0a) streamend--;
+
+        //Assume output will fit into 10 times input buffer:
+        size_t outsize = (streamend - streamstart) * 10;
+        std::string output;
+        output.reserve(outsize);
+        //Setting values for z_stream structure. C-style forzed by library
+        z_stream zstream; ZeroMemory(&zstream, sizeof(zstream));
+
+        zstream.avail_in = streamend - streamstart + 1;
+        zstream.avail_out = outsize;
+        zstream.next_in = static_cast<Bytef*> (line_in.at[streamstart].c_str);
+        zstream.next_out = static_cast<Bytef*> (output.c_str);
+
+        //Lets inflate the block of data
+        int rsti = inflate(&zstream);
+        if (rsti == Z_OK)
+        {
+            int rst2 = inflate(&zstream, Z_FINISH);
+            if (rst2 >= 0)
+            {
+                //Ok, got something, extract the text
+                size_t totout = zstream.total_out;
+                ProcessOutput(output.c_str, totout);
+            }
+        }
+
+
+    }
     if (size_t postd = line_in.find("TD") != std::string::npos)
     {
         _outputFile << line_in;
@@ -68,7 +117,7 @@ std::string Cpdf_to_text::ProcessLine(const std::string & line_in)
     return std::string();
 }
 
-void Cpdf_to_text::ProcessOutput(char * output, size_t length)
+void Cpdf_to_text::ProcessOutput(std::string output, size_t length)
 {
 	//Are we currently inside a text object?
 	bool intextobject = false;
@@ -83,7 +132,8 @@ void Cpdf_to_text::ProcessOutput(char * output, size_t length)
 	char oc[oldchar];
 	int j = 0;
 	for (j = 0; j < oldchar; j++) oc[j] = ' ';
-
+    //TODO use iterators for going trhough output string
+    //TODO change the way it is stored on file using streams
 	for (size_t i = 0; i < length; i++)
 	{
 		char c = output[i];
@@ -97,21 +147,21 @@ void Cpdf_to_text::ProcessOutput(char * output, size_t length)
 				if (num > 1.0)
 				{
                     //carriage return
-					fputc(0x0d, pPdfFile);
+					fputc(0x0d, _inputFile.);
                     //new line
-					fputc(0x0a, pPdfFile);
+					fputc(0x0a, _inputFile);
 				}
 				if (num < 1.0)
 				{
-					fputc('\t', pPdfFile);
+					fputc('\t', _inputFile);
 				}
 			}
 			if (rbdepth == 0 && seen2("ET", oc))
 			{
 				//End of a text object, also go to a new line.
 				intextobject = false;
-				fputc(0x0d, pPdfFile);
-				fputc(0x0a, pPdfFile);
+				fputc(0x0d, _inputFile);
+				fputc(0x0a, _inputFile);
 			}
 			else if (c == '(' && rbdepth == 0 && !nextliteral)
 			{
@@ -124,11 +174,11 @@ void Cpdf_to_text::ProcessOutput(char * output, size_t length)
 				{
 					if (num > 1000.0)
 					{
-						fputc('\t', pPdfFile);
+						fputc('\t', _inputFile);
 					}
 					else if (num > 100.0)
 					{
-						fputc(' ', pPdfFile);
+						fputc(' ', _inputFile);
 					}
 				}
 			}
@@ -150,7 +200,7 @@ void Cpdf_to_text::ProcessOutput(char * output, size_t length)
 					nextliteral = false;
 					if (((c >= ' ') && (c <= '~')) || ((c >= 128) && (c < 255)))
 					{
-						fputc(c, pPdfFile);
+						fputc(c, _inputFile);
 					}
 				}
 			}
